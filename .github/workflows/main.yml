@@ -23,14 +23,29 @@ jobs:
           Write-Host "Waiting for Tailscale service to start..." -ForegroundColor Cyan
           Start-Sleep -Seconds 10
           
+          $AuthKey = "${{ secrets.TAILSCALE_AUTHKEY }}"
+          if ([string]::IsNullOrWhiteSpace($AuthKey)) {
+              Write-Error "TAILSCALE_AUTHKEY secret is empty! Please add it in GitHub Settings > Secrets."
+              exit 1
+          }
+          
           Write-Host "Authenticating to Tailnet..." -ForegroundColor Cyan
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="${{ secrets.TAILSCALE_AUTHKEY }}" --unattended
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=$AuthKey --unattended
 
       - name: Create User 'raju' and Enable RDP
         shell: powershell
         run: |
+          Write-Host "Validating Password Secret..." -ForegroundColor Cyan
+          $RawPassword = "${{ secrets.RAJU_PASSWORD }}"
+          
+          # Failsafe: If the secret is missing, use a default password to prevent the crash
+          if ([string]::IsNullOrWhiteSpace($RawPassword)) {
+              Write-Host "RAJU_PASSWORD secret is empty! Using default password..." -ForegroundColor Yellow
+              $RawPassword = "RajuSecurePass123!" 
+          }
+          
           Write-Host "Creating user 'raju'..." -ForegroundColor Cyan
-          $Password = ConvertTo-SecureString "${{ secrets.RAJU_PASSWORD }}" -AsPlainText -Force
+          $Password = ConvertTo-SecureString $RawPassword -AsPlainText -Force
           New-LocalUser -Name "raju" -Password $Password -FullName "Raju RDP"
           
           Write-Host "Adding 'raju' to Administrators and RDP groups..." -ForegroundColor Cyan
@@ -52,7 +67,7 @@ jobs:
           Write-Host "Connect to RDP using:"
           Write-Host "IP Address: $ip"
           Write-Host "Username: raju"
-          Write-Host "Password: <Your RAJU_PASSWORD Secret>"
+          Write-Host "Password: (Your GitHub Secret, OR RajuSecurePass123! if empty)"
           Write-Host "========================================="
 
       - name: Keep Runner Alive
