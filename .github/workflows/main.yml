@@ -1,0 +1,58 @@
+name: Windows RDP via Tailscale
+
+# Triggers the workflow manually
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          # Optional: You can set a specific hostname for the GitHub runner
+          hostname: github-windows-runner
+
+      - name: Create User 'raju' and Enable RDP
+        shell: powershell
+        run: |
+          Write-Host "Creating user 'raju'..." -ForegroundColor Cyan
+          $Password = ConvertTo-SecureString "${{ secrets.RAJU_PASSWORD }}" -AsPlainText -Force
+          New-LocalUser -Name "raju" -Password $Password -FullName "Raju RDP"
+          
+          Write-Host "Adding 'raju' to Administrators and RDP groups..." -ForegroundColor Cyan
+          Add-LocalGroupMember -Group "Administrators" -Member "raju"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "raju"
+          
+          Write-Host "Enabling Remote Desktop..." -ForegroundColor Cyan
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
+          
+          Write-Host "Setup Complete!" -ForegroundColor Green
+
+      - name: Get Tailscale IP
+        shell: powershell
+        run: |
+          $ip = tailscale ip -4
+          Write-Host "========================================="
+          Write-Host "Connect to RDP using:"
+          Write-Host "IP Address: $ip"
+          Write-Host "Username: raju"
+          Write-Host "Password: <Your RAJU_PASSWORD Secret>"
+          Write-Host "========================================="
+
+      - name: Keep Runner Alive
+        shell: powershell
+        run: |
+          Write-Host "Keeping the GitHub Action alive. You can now connect."
+          Write-Host "Note: GitHub Actions will forcibly terminate this job after 6 hours."
+          # Infinite loop to prevent the workflow from completing and shutting down the VM
+          while ($true) { Start-Sleep -Seconds 300 }
+          
